@@ -1,0 +1,8 @@
+# Ray 核心与数据模块
+ray[default,data]>=2.9.0
+
+# 数值计算（示例中生成数据用）
+numpy>=1.24.0
+
+# 可选：增强 Ray Dashboard 体验
+# prometheus-client
