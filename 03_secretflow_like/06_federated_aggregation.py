@@ -66,10 +66,10 @@ def main():
         description="模拟 SecretFlow 风格的联邦聚合示例",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-多节点集群运行示例：
-  1. Head Node:  ray start --head --port=6379
-  2. Worker Node: ray start --address="<head_ip>:6379"
-  3. 运行脚本:    python 06_federated_aggregation.py --ray-address=ray://<head_ip>:10001
+            多节点集群运行示例：
+              1. Head Node:  ray start --head --port=6379
+              2. Worker Node: ray start --address="<head_ip>:6379"
+              3. 运行脚本:    python 06_federated_aggregation.py --ray-address=ray://<head_ip>:10001
         """,
     )
     parser.add_argument(
@@ -98,6 +98,12 @@ def main():
     print('Cluster Resources:', ray.cluster_resources())
     print('Available Resources:', ray.available_resources())
     print('Nodes:', ray.nodes())
+    nodes = ray.nodes()
+    print(f"集群中有 {len(nodes)} 个节点:")
+    for node in nodes:
+        print(f"  - Node ID: {node['NodeID']}")
+        print(f"    IP: {node['NodeManagerAddress']}")
+        print(f"    状态: {node['Alive']}")
 
     # -------------------------------------------------------
     # 2. 重要概念：联邦学习与 Ray 的结合
@@ -115,6 +121,7 @@ def main():
     # -------------------------------------------------------
     num_parties = 3
     # 创建资源束（bundle）：每个 Party 和 Aggregator 各占用 0.5 CPU
+    # 创建 4 个 bundles（3 Party + 1 Aggregator）
     bundles = [{"CPU": 0.5} for _ in range(num_parties + 1)]  # 3 Party + 1 Aggregator
     pg = placement_group(bundles, strategy="SPREAD", name="federated_pg")
     ray.get(pg.ready())  # 等待 Placement Group 就绪
