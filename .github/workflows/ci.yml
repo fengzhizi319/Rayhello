@@ -39,9 +39,16 @@ jobs:
         run: |
           # 对所有 Python 文件进行语法检查，确保没有语法错误
           # py_compile 会编译文件但不执行，快速发现语法问题
-          python -m py_compile 01_basic/*.py 02_advanced/*.py 03_secretflow_like/*.py run_all.py
+          python -m py_compile 01_basic/*.py 02_advanced/*.py 03_secretflow_like/*.py tests/*.py run_all.py
 
-      # 步骤5：运行所有示例代码
+      # 步骤5：运行单元测试
+      - name: Run unit tests
+        env:
+          # 关闭 Ray 关于 accelerator visible devices 的 FutureWarning 提示
+          RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO: "0"
+        run: pytest tests/ -v
+
+      # 步骤6：运行所有示例代码
       - name: Run all examples
         env:
           # 关闭 Ray 关于 accelerator visible devices 的 FutureWarning 提示

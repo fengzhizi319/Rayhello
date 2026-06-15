@@ -6,3 +6,6 @@ numpy>=1.24.0
 
 # 可选：增强 Ray Dashboard 体验
 # prometheus-client
+
+# 单元测试
+pytest>=7.0.0

@@ -428,6 +428,70 @@ python 03_secretflow_like/06_federated_aggregation.py
 - 理解 Ray 如何作为 SecretFlow 的分布式执行引擎。
 - 体会隐私计算场景下多参与方计算的调度模式。
 
+#### 多节点 Ray 集群下的联邦学习
+
+上面的命令在**本地单进程**中模拟了 3 个 Party。在真实联邦学习场景下，每个参与方通常位于不同的物理机器上，各自启动一个 Ray 进程，然后组成一个真正的 Ray 集群：
+
+**1. 选择一台机器作为 Head Node（协调方所在机器）**
+
+```bash
+ray start --head --port=6379 --dashboard-host=0.0.0.0
+```
+
+启动成功后会显示类似 `Ray runtime started.` 以及 head node 的 IP 和端口。
+
+**2. 其他参与方机器作为 Worker Node 加入集群**
+
+在每台 Party 机器上执行：
+
+```bash
+ray start --address="<head_node_ip>:6379"
+```
+
+例如 head node IP 为 `192.168.1.10`：
+
+```bash
+ray start --address="192.168.1.10:6379"
+```
+
+**3. 在任一节点上运行联邦聚合脚本**
+
+```bash
+python 03_secretflow_like/06_federated_aggregation.py --ray-address=ray://192.168.1.10:10001
+```
+
+或者通过环境变量指定：
+
+```bash
+RAY_ADDRESS=ray://192.168.1.10:10001 python 03_secretflow_like/06_federated_aggregation.py
+```
+
+此时：
+
+- `Party Actor` 会被 Placement Group 的 `SPREAD` 策略尽量分散到不同节点。
+- `Aggregator Actor` 通常也运行在 Head Node 或指定节点上。
+- 各方原始数据保留在本地，只有梯度/统计量通过网络传输到协调方。
+
+**停止集群**：
+
+```bash
+# 在每台 Worker Node 上执行
+ray stop
+
+# 在 Head Node 上执行
+ray stop
+```
+
+**真实场景 vs 本示例**：
+
+| 对比项 | 本示例 | 真实联邦学习（如 SecretFlow） |
+| ------ | ------ | ----------------------------- |
+| 数据位置 | 同进程内存 | 各 Party 本地磁盘/数据库 |
+| 通信内容 | 明文梯度 | 秘密分享/同态加密后的密文 |
+| 聚合位置 | 普通 Aggregator Actor | SPU（安全多方计算单元） |
+| 网络安全 | 无 | TLS、认证、安全信道 |
+| 调度目标 | 学习 Ray API | 隐私保护下的分布式计算 |
+
 ## 三、常用调试命令
 
 ```bash
@@ -445,6 +509,12 @@ python 01_basic/01_remote_task.py
 
 # 一键运行全部示例
 python run_all.py
+
+# 运行单元测试
+pytest tests/ -v
+
+# 运行指定测试文件
+pytest tests/test_federated_aggregation.py -v
 ```
 
 ## 四、学习建议
@@ -466,6 +536,20 @@ A：Ray 对 Windows 支持有限，推荐使用 WSL2 / Linux / macOS。
 
 **Q3：需要 GPU 吗？**  
 A：本 demo 全部在 CPU 上即可运行，无需 GPU。
+
+**Q4：多节点集群连接不上怎么办？**  
+A：请检查以下几点：
+- Head Node 的 `6379` 端口和 `10001` 端口是否开放（防火墙 / 安全组）。
+- Worker Node 执行 `ray start --address="<head_ip>:6379"` 时是否返回 `Ray runtime started.`。
+- 运行脚本时使用的地址是否为 `ray://<head_ip>:10001`（Ray Client 默认端口是 10001）。
+- 各节点 Ray 版本是否一致：`python -c "import ray; print(ray.__version__)"`。
+
+**Q5：联邦学习中各方必须运行完全相同的代码吗？**  
+A：不一定。典型做法是：
+- 各方运行同一套 Ray 运行时（版本一致即可）。
+- Party 方的计算逻辑（如 `Party` Actor）可以相同，也可以根据各自数据特点定制。
+- 协调方只需要知道统一的梯度/统计量格式，就能执行聚合。
+- SecretFlow 等框架会进一步封装通信协议和安全计算细节，各方只需调用高层 API。
 
 ---
 
