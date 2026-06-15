@@ -1,39 +1,50 @@
+# CI/CD 工作流配置：自动化测试 Ray 学习项目
 name: CI
 
+# 触发条件：当以下事件发生时自动执行此工作流
 on:
   push:
-    branches: [main]
+    branches: [main]  # 推送到 main 分支时触发
   pull_request:
-    branches: [main]
+    branches: [main]  # 向 main 分支发起 PR 时触发
 
 jobs:
+  # 定义名为 "test" 的测试任务
   test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-latest  # 在最新版本的 Ubuntu 运行器上执行
+    timeout-minutes: 25     # 设置超时时间为 15 分钟，防止任务卡死
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.10"]  # 使用 Python 3.10 版本进行测试（可扩展多版本矩阵测试）
 
     steps:
+      # 步骤1：检出代码仓库
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4  # 使用官方 checkout action 克隆代码到工作目录
 
+      # 步骤2：配置 Python 环境
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5  # 使用官方 setup-python action
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}  # 安装矩阵策略中指定的 Python 版本
 
+      # 步骤3：安装项目依赖
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip  # 升级 pip 到最新版本
+          pip install -r requirements.txt      # 从 requirements.txt 安装所有依赖（包括 ray、numpy 等）
 
+      # 步骤4：语法检查（编译验证）
       - name: Syntax check
         run: |
+          # 对所有 Python 文件进行语法检查，确保没有语法错误
+          # py_compile 会编译文件但不执行，快速发现语法问题
           python -m py_compile 01_basic/*.py 02_advanced/*.py 03_secretflow_like/*.py run_all.py
 
+      # 步骤5：运行所有示例代码
       - name: Run all examples
         env:
           # 关闭 Ray 关于 accelerator visible devices 的 FutureWarning 提示
+          # 该警告在非 GPU 环境下会出现，设置为 "0" 可抑制此警告
           RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO: "0"
-        run: python run_all.py
+        run: python run_all.py  # 执行项目的主运行脚本，运行所有 Ray 示例

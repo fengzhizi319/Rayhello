@@ -26,15 +26,42 @@ def add_features(batch: dict) -> dict:
     """
     对 batch 数据做特征增强。
     batch 是一个 dict，key 是列名，value 是 numpy array。
+    
+    Args:
+        batch: 包含原始数据的字典，例如 {"score": np.array([50, 60, 70])}
+    
+    Returns:
+        添加了新特征的字典，新增列：
+        - score_squared: 分数的平方值
+        - passed: 是否及格（分数>=60），1表示及格，0表示不及格
+    
+    Example:
+        输入: {"score": array([50, 80])}
+        输出: {"score": array([50, 80]), 
+               "score_squared": array([2500, 6400]),
+               "passed": array([0, 1])}
     """
-    scores = batch["score"]
-    batch["score_squared"] = scores ** 2
-    batch["passed"] = (scores >= 60).astype(np.int8)
+    scores = batch["score"]  # 提取分数列（numpy数组）
+    batch["score_squared"] = scores ** 2  # 计算分数的平方，作为新的特征
+    batch["passed"] = (scores >= 60).astype(np.int8)  # 判断是否及格（>=60分），转换为int8类型(0或1)
     return batch
 
 
 def double_score(batch: dict) -> dict:
-    batch["score"] = batch["score"] * 2
+    """
+    将分数列的值翻倍。
+    
+    Args:
+        batch: 包含分数数据的字典，必须包含 "score" 列
+    
+    Returns:
+        分数翻倍后的字典
+    
+    Example:
+        输入: {"score": array([50, 60, 70])}
+        输出: {"score": array([100, 120, 140])}
+    """
+    batch["score"] = batch["score"] * 2  # 将所有分数乘以2
     return batch
 
 
