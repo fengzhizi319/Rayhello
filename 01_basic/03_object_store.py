@@ -43,6 +43,22 @@ def share_data_between_tasks(data: list, task_id: int) -> int:
 def main():
     context = ray.init(ignore_reinit_error=True)
     print("Ray 已启动，Dashboard 地址：", context.dashboard_url)
+    
+    # 输出集群资源信息
+    print('\n=== 集群资源信息 ===')
+    print('Dashboard URL:', context.dashboard_url)
+    print('Cluster Resources:', ray.cluster_resources())
+    print('Available Resources:', ray.available_resources())
+    
+    # -------------------------------------------------------
+    # 重要概念：Object Store 详解
+    # -------------------------------------------------------
+    print('\n=== Object Store 重要概念说明 ===')
+    print('1. Object Store 是 Ray 的分布式共享内存系统')
+    print('2. ray.put() 将对象序列化并存储在 Object Store 中')
+    print('3. ray.get() 从 Object Store 获取对象')
+    print('4. ObjectRef 是指向 Object Store 中对象的引用')
+    print('5. 同一个 ObjectRef 可被多个 Task/Actor 共享，节省网络传输')
 
     # -------------------------------------------------------
     # 1. 显式把对象放入 Object Store
@@ -94,7 +110,52 @@ def main():
     ready, remaining = ray.wait(refs, num_returns=1, timeout=10)
     print(f"最先完成：{ray.get(ready[0])}")
     print(f"剩余未完成的 ObjectRef 数量：{len(remaining)}")
-
+    
+    # -------------------------------------------------------
+    # 5. 补充对象存储相关测试
+    # -------------------------------------------------------
+    print("\n=== 补充对象存储相关测试 ===")
+    
+    # 5.1 测试大型对象存储
+    large_array = np.random.rand(1000000)  # 100万个浮点数
+    large_array_ref = ray.put(large_array)
+    print(f"大型数组存储成功，ObjectRef: {large_array_ref}")
+    print(f"大型数组大小：{large_array.nbytes / 1024 / 1024:.2f} MB")
+    
+    # 5.2 测试嵌套对象存储
+    nested_obj = {
+        "array": np.array([1, 2, 3]),
+        "list": ["a", "b", "c"],
+        "dict": {"key": "value"},
+        "scalar": 42
+    }
+    nested_obj_ref = ray.put(nested_obj)
+    retrieved_nested_obj = ray.get(nested_obj_ref)
+    print(f"嵌套对象存储和检索成功：{type(retrieved_nested_obj)}")
+    
+    # 5.3 测试多个 Task 同时访问同一 ObjectRef
+    print("\n=== 多个 Task 同时访问同一 ObjectRef 性能测试 ===")
+    shared_data_ref = ray.put(np.ones(100000))  # 10万个元素的数组
+    start_time = time.time()
+    parallel_refs = [process_with_data.remote(shared_data_ref, i + 1) for i in range(10)]
+    parallel_results = ray.get(parallel_refs)
+    print(f"10个 Task 并行访问同一 ObjectRef，耗时：{time.time() - start_time:.2f}s")
+    print(f"结果示例：前3个结果 {parallel_results[:3]}...")
+    
+    # 5.4 测试 ray.wait 的高级用法
+    print("\n=== ray.wait 高级用法测试 ===")
+    wait_refs = [process_with_data.remote(arr_ref, i + 1) for i in range(8)]
+    
+    # 等待前3个完成
+    start_time = time.time()
+    ready, remaining = ray.wait(wait_refs, num_returns=3, timeout=None)
+    print(f"前3个任务完成，耗时：{time.time() - start_time:.2f}s")
+    print(f"已完成数量：{len(ready)}，剩余数量：{len(remaining)}")
+    
+    # 等待所有完成
+    all_results = ray.get(wait_refs)
+    print(f"所有任务最终完成，结果数量：{len(all_results)}")
+    
     ray.shutdown()
     print("\nRay 已关闭")
 

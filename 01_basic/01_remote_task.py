@@ -37,12 +37,24 @@ def slow_add(a: int, b: int) -> int:
     return a + b
 
 
+@ray.remote
+def slow_square(x: int) -> int:
+    """
+    计算输入数字的平方，带有一个小延迟以模拟计算时间。
+    """
+    time.sleep(0.3)
+    return x * x
+
+
 def main():
     # -------------------------------------------------------
     # 2. 初始化 Ray（本地模式）
     # -------------------------------------------------------
     # ignore_reinit_error=True 避免重复初始化报错，方便 jupyter/interactive 环境
     context = ray.init(ignore_reinit_error=True)
+    print('Dashboard URL:', context.dashboard_url)
+    print('Cluster Resources:', ray.cluster_resources())
+    print('Available Resources:', ray.available_resources())
     print("Ray 已启动，Dashboard 地址：", context.dashboard_url)
 
     # -------------------------------------------------------
@@ -82,7 +94,20 @@ def main():
     print(f"结果：{value}")
 
     # -------------------------------------------------------
-    # 5. 清理
+    # 5. 新增远程函数演示：slow_square
+    # -------------------------------------------------------
+    print("\n=== 新增远程函数 slow_square 示例 ===")
+    square_refs = []
+    for i in range(5):
+        ref = slow_square.remote(i)
+        square_refs.append(ref)
+        print(f"  已提交 slow_square Task {i}, ObjectRef: {ref}")
+    
+    square_results = ray.get(square_refs)
+    print(f"slow_square 结果：{square_results}")
+
+    # -------------------------------------------------------
+    # 6. 清理
     # -------------------------------------------------------
     ray.shutdown()
     print("\nRay 已关闭")

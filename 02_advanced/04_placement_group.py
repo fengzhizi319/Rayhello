@@ -34,6 +34,21 @@ class Worker:
 def main():
     context = ray.init(ignore_reinit_error=True)
     print("Ray 已启动，Dashboard 地址：", context.dashboard_url)
+    
+    # 输出集群资源信息
+    print('\n=== 集群资源信息 ===')
+    print('Dashboard URL:', context.dashboard_url)
+    print('Cluster Resources:', ray.cluster_resources())
+    print('Available Resources:', ray.available_resources())
+    
+    # -------------------------------------------------------
+    # 重要概念：Placement Group 详解
+    # -------------------------------------------------------
+    print('\n=== Placement Group 重要概念说明 ===')
+    print('1. Placement Group 是 Ray 的资源预留和调度机制')
+    print('2. Bundle 是资源的基本单位，定义了 CPU、GPU、内存等资源需求')
+    print('3. Strategy 定义了 Bundle 之间的放置关系')
+    print('4. 可用于实现数据局部性、负载均衡、故障隔离等高级调度策略')
 
     # -------------------------------------------------------
     # 1. 创建 Placement Group
@@ -63,7 +78,56 @@ def main():
     print(f"耗时：{time.time() - start:.2f}s")
 
     # -------------------------------------------------------
-    # 3. 策略对比说明（本地模式主要观察 API）
+    # 3. 不同策略的 Placement Group 测试
+    # -------------------------------------------------------
+    print("\n=== 不同策略的 Placement Group 对比 ===")
+    
+    # 3.1 PACK 策略：尽可能打包在同一节点
+    print("\n--- 测试 PACK 策略 ---")
+    pack_bundles = [{"CPU": 0.5} for _ in range(2)]
+    pack_pg = placement_group(pack_bundles, strategy="PACK", name="pack_pg")
+    ray.get(pack_pg.ready())
+    print(f"PACK PG 创建成功：{pack_pg.bundle_specs}")
+    
+    # 3.2 SPREAD 策略：尽可能分散到不同节点
+    print("\n--- 测试 SPREAD 策略 ---")
+    spread_bundles = [{"CPU": 0.5} for _ in range(2)]
+    spread_pg = placement_group(spread_bundles, strategy="SPREAD", name="spread_pg")
+    ray.get(spread_pg.ready())
+    print(f"SPREAD PG 创建成功：{spread_pg.bundle_specs}")
+    
+    # 3.3 STRICT_PACK 策略：严格打包在同一节点
+    print("\n--- 测试 STRICT_PACK 策略 ---")
+    strict_pack_bundles = [{"CPU": 0.5} for _ in range(2)]
+    strict_pack_pg = placement_group(strict_pack_bundles, strategy="STRICT_PACK", name="strict_pack_pg")
+    ray.get(strict_pack_pg.ready())
+    print(f"STRICT_PACK PG 创建成功：{strict_pack_pg.bundle_specs}")
+    
+    # 3.4 创建多个具有不同策略的 Worker 并比较性能
+    print("\n--- 性能对比测试 ---")
+    
+    # 在 PACK 策略的 PG 中创建 Workers
+    pack_workers = [
+        Worker.options(placement_group=pack_pg).remote(i+10) 
+        for i in range(2)
+    ]
+    start_time = time.time()
+    pack_refs = [w.work.remote(i) for i, w in enumerate(pack_workers)]
+    pack_results = ray.get(pack_refs)
+    print(f"PACK 策略结果：{pack_results}，耗时：{time.time() - start_time:.2f}s")
+    
+    # 在 SPREAD 策略的 PG 中创建 Workers
+    spread_workers = [
+        Worker.options(placement_group=spread_pg).remote(i+20) 
+        for i in range(2)
+    ]
+    start_time = time.time()
+    spread_refs = [w.work.remote(i) for i, w in enumerate(spread_workers)]
+    spread_results = ray.get(spread_refs)
+    print(f"SPREAD 策略结果：{spread_results}，耗时：{time.time() - start_time:.2f}s")
+    
+    # -------------------------------------------------------
+    # 4. 策略对比说明（本地模式主要观察 API）
     # -------------------------------------------------------
     print("\n=== Placement Strategy 说明 ===")
     strategies = {
@@ -74,12 +138,19 @@ def main():
     }
     for name, desc in strategies.items():
         print(f"  {name}: {desc}")
-
+    
     # -------------------------------------------------------
-    # 4. 清理 Placement Group
+    # 5. 清理所有 Placement Group
     # -------------------------------------------------------
+    print("\n=== 清理所有 Placement Group ===")
     ray.util.remove_placement_group(pg)
-    print("\nPlacement Group 已移除")
+    print("原 PG 已移除")
+    ray.util.remove_placement_group(pack_pg)
+    print("PACK PG 已移除")
+    ray.util.remove_placement_group(spread_pg)
+    print("SPREAD PG 已移除")
+    ray.util.remove_placement_group(strict_pack_pg)
+    print("STRICT_PACK PG 已移除")
 
     ray.shutdown()
     print("Ray 已关闭")

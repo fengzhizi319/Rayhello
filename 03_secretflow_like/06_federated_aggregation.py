@@ -82,6 +82,22 @@ class Aggregator:
 def main():
     context = ray.init(ignore_reinit_error=True)
     print("Ray 已启动，Dashboard 地址：", context.dashboard_url)
+    
+    # 输出集群资源信息
+    print('\n=== 集群资源信息 ===')
+    print('Dashboard URL:', context.dashboard_url)
+    print('Cluster Resources:', ray.cluster_resources())
+    print('Available Resources:', ray.available_resources())
+    
+    # -------------------------------------------------------
+    # 重要概念：联邦学习与 Ray 的结合
+    # -------------------------------------------------------
+    print('\n=== 联邦学习与 Ray 结合的重要概念 ===')
+    print('1. 联邦学习是一种分布式机器学习范式，数据保留在本地不移动')
+    print('2. Ray 作为底层分布式执行引擎，提供任务调度和资源管理')
+    print('3. Party Actor 代表各个参与方，拥有自己的本地数据和计算能力')
+    print('4. Aggregator Actor 协调各方计算结果的聚合')
+    print('5. Placement Group 用于模拟真实的分布式部署环境')
 
     # -------------------------------------------------------
     # 1. 创建 Placement Group（模拟把不同 Party 放到不同节点）
@@ -139,9 +155,84 @@ def main():
         print(f"聚合后全局权重范数：{np.linalg.norm(global_weights):.4f}")
 
     print(f"\n联邦训练完成，总耗时：{time.time() - start:.2f}s")
-
+    
     # -------------------------------------------------------
-    # 5. 清理
+    # 5. 补充联邦学习详细测试
+    # -------------------------------------------------------
+    print("\n=== 补充联邦学习详细测试 ===")
+    
+    # 5.1 分析各轮训练的详细信息
+    print("\n--- 分析各轮训练的梯度变化 ---")
+    num_rounds_analysis = 2
+    dim = 5
+    global_weights_analysis = np.zeros(dim)
+    
+    for rnd in range(num_rounds_analysis):
+        print(f"\n--- 第 {rnd + 1} 轮分析 ---")
+        
+        # 各 Party 并行计算本地梯度
+        local_refs = [p.compute_local_gradient.remote(global_weights_analysis) for p in parties]
+        local_results = ray.get(local_refs)
+        
+        # 打印每个 Party 的梯度信息
+        for result in local_results:
+            print(f"  {result['party_id']} - 样本数: {result['num_samples']}, 梯度范数: {np.linalg.norm(result['gradient']):.4f}")
+        
+        # Aggregator 聚合
+        global_weights_ref = aggregator.aggregate.remote(local_results)
+        global_weights_analysis = ray.get(global_weights_ref)
+        print(f"  聚合后全局权重范数：{np.linalg.norm(global_weights_analysis):.4f}")
+    
+    # 5.2 测试不同聚合策略
+    print("\n--- 测试简单平均聚合策略 ---")
+    @ray.remote
+    def simple_average_aggregate(local_results: list) -> np.ndarray:
+        """
+        简单平均聚合策略：不考虑样本数差异，直接平均
+        """
+        gradients = [r["gradient"] for r in local_results]
+        avg_gradient = np.mean(gradients, axis=0)
+        print(f"简单平均聚合完成，梯度范数：{np.linalg.norm(avg_gradient):.4f}")
+        return avg_gradient
+    
+    # 执行简单平均聚合
+    local_refs = [p.compute_local_gradient.remote(global_weights_analysis) for p in parties]
+    local_results = ray.get(local_refs)
+    simple_avg_result = ray.get(simple_average_aggregate.remote(local_results))
+    
+    # 5.3 测试联邦学习收敛性
+    print("\n--- 测试联邦学习收敛性 ---")
+    convergence_threshold = 1e-3
+    max_iterations = 10
+    dim = 5
+    global_weights_conv = np.random.randn(dim)  # 随机初始化权重
+    prev_global_weights = None
+    
+    for iteration in range(max_iterations):
+        print(f"\n--- 收敛性测试 - 第 {iteration + 1} 轮 ---")
+        
+        # 各 Party 并行计算本地梯度
+        local_refs = [p.compute_local_gradient.remote(global_weights_conv) for p in parties]
+        local_results = ray.get(local_refs)
+        
+        # Aggregator 聚合
+        global_weights_ref = aggregator.aggregate.remote(local_results)
+        new_global_weights = ray.get(global_weights_ref)
+        
+        # 计算权重变化
+        if prev_global_weights is not None:
+            weight_diff = np.linalg.norm(new_global_weights - prev_global_weights)
+            print(f"  权重变化范数：{weight_diff:.6f}")
+            if weight_diff < convergence_threshold:
+                print(f"  达到收敛阈值 ({convergence_threshold})，停止训练")
+                break
+        
+        prev_global_weights = new_global_weights
+        global_weights_conv = new_global_weights
+        print(f"  当前全局权重范数：{np.linalg.norm(global_weights_conv):.4f}")
+    
+    # -------------------------------------------------------
+    # 6. 清理
     # -------------------------------------------------------
     ray.util.remove_placement_group(pg)
     print("\nPlacement Group 已移除")

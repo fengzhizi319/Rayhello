@@ -40,6 +40,22 @@ def double_score(batch: dict) -> dict:
 def main():
     context = ray.init(ignore_reinit_error=True)
     print("Ray 已启动，Dashboard 地址：", context.dashboard_url)
+    
+    # 输出集群资源信息
+    print('\n=== 集群资源信息 ===')
+    print('Dashboard URL:', context.dashboard_url)
+    print('Cluster Resources:', ray.cluster_resources())
+    print('Available Resources:', ray.available_resources())
+    
+    # -------------------------------------------------------
+    # 重要概念：Ray Dataset 详解
+    # -------------------------------------------------------
+    print('\n=== Ray Dataset 重要概念说明 ===')
+    print('1. Ray Dataset 是 Ray 的分布式数据处理库')
+    print('2. 支持惰性执行（Lazy Execution），转换操作不会立即执行')
+    print('3. 支持多种数据格式：Pandas DataFrame、PyArrow Table、Numpy Array 等')
+    print('4. 自动并行处理，充分利用集群资源')
+    print('5. 支持 map、filter、groupby、join 等常见数据操作')
 
     # -------------------------------------------------------
     # 1. 创建 Dataset
@@ -93,7 +109,62 @@ def main():
     top5 = transformed.take(5)
     for row in top5:
         print(row)
-
+    
+    # -------------------------------------------------------
+    # 6. 补充 Ray Dataset 测试
+    # -------------------------------------------------------
+    print("\n=== 补充 Ray Dataset 测试 ===")
+    
+    # 6.1 测试 map_batches 函数的不同批处理格式
+    print("\n--- 测试 Pandas 格式的批处理 ---")
+    def add_features_pandas(df):
+        """
+        使用 Pandas DataFrame 格式进行批处理
+        """
+        df['score_squared'] = df['score'] ** 2
+        df['passed'] = df['score'] >= 60
+        return df
+    
+    pandas_transformed = ds.map_batches(
+        add_features_pandas,
+        batch_format="pandas"  # 使用 Pandas DataFrame 格式
+    )
+    print("Pandas 格式转换完成，查看前3行：")
+    pandas_transformed.show(3)
+    
+    # 6.2 测试更复杂的数据聚合
+    print("\n--- 测试复杂聚合操作 ---")
+    complex_agg = (
+        ds
+        .map_batches(add_features, batch_format="numpy")
+        .groupby("party")
+        .aggregate(
+            mean_score=("score", "mean"),
+            max_score=("score", "max"),
+            min_score=("score", "min"),
+            count=("score", "count")
+        )
+    )
+    print("复杂聚合结果：")
+    complex_agg.show()
+    
+    # 6.3 测试数据排序
+    print("\n--- 测试数据排序 ---")
+    sorted_ds = ds.sort(key="score", descending=True)
+    print("按分数降序排列前5条：")
+    sorted_ds.show(5)
+    
+    # 6.4 测试数据采样
+    print("\n--- 测试数据采样 ---")
+    sampled_ds = ds.random_sample(0.1)  # 随机采样10%的数据
+    print(f"原始数据集大小：{ds.count()}，采样后大小：{sampled_ds.count()}")
+    
+    # 6.5 测试 distinct 操作
+    print("\n--- 测试去重操作 ---")
+    distinct_parties = ds.select_columns(["party"]).distinct()
+    print("唯一 party 值：")
+    distinct_parties.show()
+    
     ray.shutdown()
     print("\nRay 已关闭")
 

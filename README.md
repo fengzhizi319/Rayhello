@@ -55,7 +55,45 @@ python 01_basic/01_remote_task.py
 # 未激活虚拟环境
 python3 01_basic/01_remote_task.py
 ```
+我来详细解释一下 Ray 中的 `remote` 方法及其工作原理：
 
+### Ray 的 `remote` 方法详解
+
+1. **什么是 `.remote`**  
+   `.remote` 是 Ray 提供的一个装饰器方法，用于将普通的 Python 函数或类方法标记为**远程可执行任务（Remote Task）**。当你在一个被 `@ray.remote` 装饰的函数或类上调用 `.remote()` 时，它并不会在当前进程中同步执行，而是：
+
+   - 向 Ray 集群的任务调度器提交一个执行请求
+   - 立即返回一个 `ObjectRef`（对象引用），而不是函数的实际返回值
+   - 由 Ray 的调度系统决定在哪个可用的工作节点（Worker）上异步执行该任务
+
+2. **每个 `.remote` 都会创建一个新任务吗？**  
+   是的，每次调用 `.remote()` 都会创建一个新的独立任务（Task）。例如，在你提供的代码中：
+
+   ```python
+   for i in range(n_tasks):
+       ref = slow_add.remote(i, i + 1)  # 每次循环都创建一个新任务
+       refs.append(ref)
+       print(f"  已提交 Task {i}, ObjectRef: {ref}")
+   ```
+
+
+   这里的 `slow_add.remote(i, i + 1)` 每次循环都会提交一个新的任务到 Ray 集群，总共会创建 `n_tasks` 个任务。
+
+3. **在哪里执行？类似远程新开进程吗？**  
+   - **不是简单的新开进程**：Ray 的执行模型基于**Worker 进程池**。Ray 启动时会在集群节点上预创建一组 Worker 进程（可以是本地或远程节点）。当任务被调度时，它会被分配给一个空闲的 Worker 进程执行，而不是每次都创建新的操作系统进程。
+   - **分布式执行**：如果是在多节点集群上运行，任务可能在任何可用的节点上执行。Ray 的调度器会根据资源需求（如 CPU、GPU、内存）和数据位置等信息智能地分配任务。
+   - **资源隔离**：虽然共享 Worker 进程池，但 Ray 通过其内部机制确保了任务间的资源管理和隔离。
+
+4. **与普通函数调用的区别**  
+   - **普通调用** (`func()`)：同步执行，阻塞当前线程直到函数返回结果。
+   - **远程调用** (`func.remote()`)：异步执行，立即返回 `ObjectRef`，允许主程序继续执行其他逻辑，稍后通过 `ray.get(ObjectRef)` 获取结果。
+
+5. **Actor 中的 `.remote`**  
+   对于 Actor（通过 `@ray.remote` 装饰的类），`.remote` 的行为略有不同：
+   - `ActorClass.remote()`：创建一个新的 Actor 实例（分配一个专用的 Worker 进程来维护其状态）。
+   - `actor_instance.method.remote()`：调用该 Actor 实例上的方法，此方法将在该 Actor 专属的 Worker 进程上执行，并且对于同一个 Actor 实例，其方法调用是**顺序执行**的（保证状态一致性）。
+
+总结来说，`.remote` 是 Ray 实现分布式、并行计算的核心机制，它将本地的函数调用转换为集群范围内的异步任务调度，利用 Worker 池而非频繁创建新进程来高效执行任务。
 **学习目标**：
 - 掌握 `ray.init()` 启动本地集群。
 - 理解并行调用与 `ray.get()` 阻塞取结果的区别。
