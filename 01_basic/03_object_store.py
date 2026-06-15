@@ -65,6 +65,19 @@ def main():
     # -------------------------------------------------------
     print("\n=== ray.put() 示例 ===")
     arr = np.arange(1_000_000)
+    '''
+    ray.put(object) 会将对象 object 序列化并存储到 Ray 的**分布式对象存储（Distributed Object Store）**中。
+    这个对象存储是由集群中的所有节点（包括 Head 节点和 Worker 节点）共同组成的内存池。具体来说：
+      1.本地放置（Local Put）：当你在一个节点上调用 ray.put() 时，该对象首先会被序列化并放入该节点本地的对象存储中。
+        返回的 ObjectRef 是一个全局唯一的引用，可以用来访问这个对象。
+      2.全局可见性：尽管对象最初可能物理存储在调用 ray.put 的节点上，但它对于整个 Ray 集群是全局可见的。
+        任何集群中的其他节点（无论是 Driver 还是其他 Worker）都可以使用返回的 ObjectRef 来获取这个对象
+        （通过 ray.get() 或作为任务/Actor 的参数传递）。
+      3.自动分发（Automatic Distribution）：当其他节点需要访问这个对象时，如果该对象不在目标节点的本地对象存储中，
+        Ray 的运行时系统会自动将对象从拥有它的节点传输到需要它的节点。这个过程对用户是透明的。
+        因此，：ray.put() 最初是将数据存储在调用该函数的那个节点的本地对象存储中，但该对象随后在整个集群中变得可用，
+    并且可以根据需要自动移动到其他节点。Ray 的对象存储是分布式的，利用了集群中所有节点的内存。
+    '''
     arr_ref = ray.put(arr)  # 放入对象存储
     print(f"本地对象大小：{arr.nbytes / 1024 / 1024:.2f} MB")
     print(f"ObjectRef: {arr_ref}")
@@ -98,6 +111,7 @@ def main():
     list_ref = ray.put(data_list)
 
     # 直接把 ObjectRef 传给另一个 Task，Ray 会自动解析为真实对象
+    # 这里的[]表示一个列表推导式（List Comprehension）。 列表推导式是一种简洁地创建列表的方法。它的基本结构是[表达式 for item in iterable]。
     refs = [share_data_between_tasks.remote(list_ref, i) for i in range(5)]
     results = ray.get(refs)
     print(f"结果：{results}")

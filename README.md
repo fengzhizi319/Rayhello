@@ -165,7 +165,68 @@ python 02_advanced/05_ray_dataset.py
 **学习目标**：
 - 学会 `ray.data.from_items()`、`map_batches()`、`groupby()`。
 - 理解 Dataset 的延迟执行（lazy execution）。
+- 
+详细解释 **`ray.data`** 和 **`ray.put()`** 的区别：
+#### 核心区别
+##### 1. **`ray.put()` - 对象存储操作**
+- **作用**：将单个 Python 对象放入 Ray 的分布式 Object Store（对象存储）
+- **返回**：`ObjectRef`（对象引用）
+- **使用场景**：
+  - 在 Task/Actor 之间共享数据
+  - 避免大对象重复传输
+  - 显式控制对象的序列化与分发
+  
+```python
+   # 示例：把数组放入对象存储
+   arr = np.arange(1_000_000)
+   arr_ref = ray.put(arr)  # 返回 ObjectRef
+   result = process_with_data.remote(arr_ref, 2.0)  # 传递给远程任务
+```
 
+
+##### 2. **`ray.data` - 分布式数据处理框架**
+- **作用**：提供类似 Pandas/Spark 的分布式数据集处理能力
+- **返回**：`Dataset` 对象（支持惰性执行）
+- **使用场景**：
+  - 大规模数据的加载、转换、聚合
+  - 批量数据处理（map/filter/groupby/join）
+  - 流式处理超大数据集
+
+```python
+# 示例：创建分布式数据集
+items = [{"party": "A", "score": i} for i in range(100)]
+ds = ray.data.from_items(items)  # 返回 Dataset
+transformed = ds.map_batches(add_features).filter(lambda x: x["score"] >= 80)
+transformed.show(5)  # 触发执行
+```
+
+
+## 对比总结
+
+| 特性 | `ray.put()` | `ray.data` |
+|------|------------|-----------|
+| **数据类型** | 任意 Python 对象 | 结构化数据集（表格/记录） |
+| **返回值** | `ObjectRef` | `Dataset` 对象 |
+| **执行方式** | 立即执行 | 惰性执行（Lazy Execution） |
+| **主要用途** | 对象共享与传递 | 分布式数据处理流水线 |
+| **底层机制** | 序列化到 Object Store | 分片存储 + 并行计算 |
+| **适用规模** | 小到中等对象 | 大规模数据集（GB/TB级） |
+| **典型操作** | `ray.get(ref)` 取回 | `map/filter/groupby/aggregate` |
+
+## 实际关系
+
+它们可以配合使用：
+```python
+# Dataset 的结果可以通过 ray.put() 共享给其他任务
+ds = ray.data.from_items([...])
+result = ds.take(100)  # 获取部分结果
+result_ref = ray.put(result)  # 放入对象存储供其他任务使用
+```
+
+
+**简单理解**：
+- `ray.put()` 是"把东西放进仓库"（底层存储机制）
+- `ray.data` 是"对大量数据进行工厂流水线加工"（高层数据处理框架）
 ### Step 6：SecretFlow 风格实战 —— 联邦聚合
 
 **核心概念**：

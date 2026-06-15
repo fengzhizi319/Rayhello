@@ -19,6 +19,7 @@ Ray 进阶示例 05：Ray Dataset（分布式数据）
 
 import ray
 import numpy as np
+from ray.data.aggregate import Count, Mean, Max, Min
 
 
 def add_features(batch: dict) -> dict:
@@ -134,15 +135,13 @@ def main():
     
     # 6.2 测试更复杂的数据聚合
     print("\n--- 测试复杂聚合操作 ---")
+    
     complex_agg = (
         ds
         .map_batches(add_features, batch_format="numpy")
         .groupby("party")
         .aggregate(
-            mean_score=("score", "mean"),
-            max_score=("score", "max"),
-            min_score=("score", "min"),
-            count=("score", "count")
+            Count("score"), Mean("score"), Max("score"), Min("score")
         )
     )
     print("复杂聚合结果：")
@@ -161,9 +160,9 @@ def main():
     
     # 6.5 测试 distinct 操作
     print("\n--- 测试去重操作 ---")
-    distinct_parties = ds.select_columns(["party"]).distinct()
+    distinct_parties = ds.unique("party")
     print("唯一 party 值：")
-    distinct_parties.show()
+    print(distinct_parties)
     
     ray.shutdown()
     print("\nRay 已关闭")

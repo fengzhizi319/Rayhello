@@ -152,6 +152,89 @@ def main():
     ray.util.remove_placement_group(strict_pack_pg)
     print("STRICT_PACK PG 已移除")
 
+    # -------------------------------------------------------
+    # 6. 补充：测试指定 Bundle Index 的 Task/Actor 分配
+    # -------------------------------------------------------
+    print("\n=== 测试指定 Bundle Index 的 Task/Actor 分配 ===")
+
+    # 重新创建一个包含 3 个 bundles 的 Placement Group
+    # 使用 SPREAD 策略以便在多节点环境下更好地观察分布
+    test_bundles = [{"CPU": 0.5}, {"CPU": 0.5}, {"CPU": 0.5}]
+    test_pg = placement_group(test_bundles, strategy="SPREAD", name="test_bundle_index_pg")
+    ray.get(test_pg.ready())
+    print(f"测试用 PG 创建成功：{test_pg.bundle_specs}")
+
+    # 定义一个简单的 Actor 来报告它所在的节点
+    @ray.remote(num_cpus=0.5)
+    class ReportingActor:
+        def __init__(self, actor_id):
+            self.actor_id = actor_id
+            # 获取 Node ID，兼容不同 Ray 版本的返回类型
+            raw_node_id = ray.get_runtime_context().get_node_id()
+            if hasattr(raw_node_id, 'hex'):
+                # 如果是 NodeID 对象，调用 hex() 方法
+                self.node_id = raw_node_id.hex()
+            else:
+                # 否则，假设它已经是字符串
+                self.node_id = raw_node_id
+
+        def get_location_info(self):
+            # 截取 Node ID 前几位方便查看
+            return f"Actor {self.actor_id} running on Node ID: {self.node_id[:8]}..."
+
+    # 定义一个简单的 Task 来报告它所在的节点
+    @ray.remote(num_cpus=0.5)
+    def reporting_task(task_id):
+        # 获取 Node ID，兼容不同 Ray 版本的返回类型
+        raw_node_id = ray.get_runtime_context().get_node_id()
+        if hasattr(raw_node_id, 'hex'):
+            # 如果是 NodeID 对象，调用 hex() 方法
+            current_node_id = raw_node_id.hex()
+        else:
+            # 否则，假设它已经是字符串
+            current_node_id = raw_node_id
+        return f"Task {task_id} running on Node ID: {current_node_id[:8]}..."
+
+    # 在 Placement Group 的不同 bundles 上启动 Actors
+    actor_handles = []
+    for i in range(2): # 启动 2 个 Actor，分配到 bundle 0 和 bundle 1
+        actor_handle = ReportingActor.options(
+            placement_group=test_pg,
+            placement_group_bundle_index=i # 关键：指定 bundle index
+        ).remote(f"A{i}")
+        actor_handles.append(actor_handle)
+
+    # 在 Placement Group 的不同 bundles 上启动 Tasks
+    task_refs = []
+    # A0 在 bundle 0, A1 在 bundle 1
+    # 为了避免与 Actor 竞争资源，Task 分配到剩余的 bundle
+    # 启动 T2 到 bundle 2 (目前是空闲的)
+    task_ref_t2 = reporting_task.options(
+        placement_group=test_pg,
+        placement_group_bundle_index=2 # 分配到 bundle 2
+    ).remote("T2")
+    task_refs.append(task_ref_t2)
+
+    # 如果需要启动更多 Task，需要规划足够的 bundles 或确保它们不与 Actor 冲突
+    # 例如，启动 T3 到 bundle 0 会与 A0 冲突，导致挂起
+    # 因此，我们只启动 T2 到空闲的 bundle 2 来演示功能
+
+    # 获取 Actor 的位置信息
+    actor_locations = ray.get([h.get_location_info.remote() for h in actor_handles])
+    print("\nActor 位置信息 (根据指定的 bundle index 分配):")
+    for loc in actor_locations:
+        print(f"  {loc}")
+
+    # 获取 Task 的位置信息
+    task_locations = ray.get(task_refs)
+    print("\nTask 位置信息 (根据指定的 bundle index 分配):")
+    for loc in task_locations:
+        print(f"  {loc}")
+
+    # 清理测试用的 PG
+    ray.util.remove_placement_group(test_pg)
+    print("\n测试用 PG 已移除")
+
     ray.shutdown()
     print("Ray 已关闭")
 

@@ -68,6 +68,7 @@ class Aggregator:
         """
         加权平均聚合梯度。
         真实 SecretFlow 中，这一步会在 SPU 内做安全聚合。
+        返回值是聚合后的梯度，调用方需要自行按学习率更新全局权重。
         """
         total_samples = sum(r["num_samples"] for r in local_results)
         aggregated = np.zeros_like(local_results[0]["gradient"])
@@ -137,6 +138,7 @@ def main():
     # -------------------------------------------------------
     num_rounds = 3
     dim = 5
+    learning_rate = 0.1
     global_weights = np.zeros(dim)
 
     print("\n=== 开始联邦训练 ===")
@@ -149,8 +151,10 @@ def main():
         local_results = ray.get(local_refs)
 
         # Step 4.2：Aggregator 聚合（真实场景会调用 SPU 安全聚合）
-        global_weights_ref = aggregator.aggregate.remote(local_results)
-        global_weights = ray.get(global_weights_ref)
+        aggregated_gradient = ray.get(aggregator.aggregate.remote(local_results))
+
+        # Step 4.3：按学习率更新全局权重（FedAvg 的梯度下降形式）
+        global_weights = global_weights - learning_rate * aggregated_gradient
 
         print(f"聚合后全局权重范数：{np.linalg.norm(global_weights):.4f}")
 
@@ -165,6 +169,7 @@ def main():
     print("\n--- 分析各轮训练的梯度变化 ---")
     num_rounds_analysis = 2
     dim = 5
+    learning_rate_analysis = 0.1
     global_weights_analysis = np.zeros(dim)
     
     for rnd in range(num_rounds_analysis):
@@ -179,8 +184,8 @@ def main():
             print(f"  {result['party_id']} - 样本数: {result['num_samples']}, 梯度范数: {np.linalg.norm(result['gradient']):.4f}")
         
         # Aggregator 聚合
-        global_weights_ref = aggregator.aggregate.remote(local_results)
-        global_weights_analysis = ray.get(global_weights_ref)
+        aggregated_gradient_analysis = ray.get(aggregator.aggregate.remote(local_results))
+        global_weights_analysis = global_weights_analysis - learning_rate_analysis * aggregated_gradient_analysis
         print(f"  聚合后全局权重范数：{np.linalg.norm(global_weights_analysis):.4f}")
     
     # 5.2 测试不同聚合策略
@@ -205,6 +210,7 @@ def main():
     convergence_threshold = 1e-3
     max_iterations = 10
     dim = 5
+    learning_rate_conv = 0.6  # 使用较大学习率以便在 max_iterations 内展示收敛
     global_weights_conv = np.random.randn(dim)  # 随机初始化权重
     prev_global_weights = None
     
@@ -216,8 +222,8 @@ def main():
         local_results = ray.get(local_refs)
         
         # Aggregator 聚合
-        global_weights_ref = aggregator.aggregate.remote(local_results)
-        new_global_weights = ray.get(global_weights_ref)
+        aggregated_gradient_conv = ray.get(aggregator.aggregate.remote(local_results))
+        new_global_weights = global_weights_conv - learning_rate_conv * aggregated_gradient_conv
         
         # 计算权重变化
         if prev_global_weights is not None:

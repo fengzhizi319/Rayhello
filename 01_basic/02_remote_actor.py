@@ -4,7 +4,12 @@ Ray 基础示例 02：远程 Actor（Remote Actor）
 本节目标：
     1. 学会用 @ray.remote 把 Python 类变成分布式 Actor。
     2. 理解 Actor 是有状态的 Worker，方法调用之间状态会保持。
-    3. 比较 Actor 与 Task 的适用场景。
+    3. 比较 Actor 与 Task 的适用场景
+
+    关键区别在于状态：
+    被 @ray.remote 装饰的函数，在其被调用时（通过 .remote()），就是一个 Task。Task 是 Ray 中执行计算的基本单元之一（另一个基本单元是 Actor）。
+    单独远程函数(Remote Function)：每次调用都是无状态的，函数执行完毕后，其内部变量消失。多次调用是完全独立的。
+    Actor：是一个有状态的对象。它的状态（实例属性）在方法调用之间得以保持。同一个Actor实例的所有方法调用都共享并能修改这个状态
 
 关键 API：
     - @ray.remote
@@ -98,6 +103,7 @@ def main():
 
     # -------------------------------------------------------
     # 2. 创建 Actor 实例
+
     # -------------------------------------------------------
     print("\n=== 创建单个 Counter Actor ===")
     counter = Counter.remote(initial=0)
